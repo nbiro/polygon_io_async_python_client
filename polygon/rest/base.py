@@ -125,7 +125,6 @@ class BaseClient:
                 resp = await response.text(encoding="utf-8")
                 response_status = response.status
                 response_headers = response.headers
-                print(response_status)
 
         if self.trace:
             print(f"Response Headers: {response_headers}")
@@ -204,7 +203,7 @@ class BaseClient:
             return self.headers
         return {**headers, **self.headers}
 
-    def _paginate_iter(
+    async def _paginate_iter(
         self,
         path: str,
         params: dict,
@@ -213,7 +212,7 @@ class BaseClient:
         options: Optional[RequestOptionBuilder] = None,
     ):
         while True:
-            resp = self._get(
+            resp = await self._get(
                 path=path,
                 params=params,
                 deserializer=deserializer,
@@ -226,10 +225,10 @@ class BaseClient:
                 decoded = self._decode(resp)
             except ValueError as e:
                 print(f"Error decoding json response: {e}")
-                return []
+                yield
 
             if result_key not in decoded:
-                return []
+                yield
             for t in decoded[result_key]:
                 yield deserializer(t)
             if "next_url" in decoded:
@@ -238,7 +237,7 @@ class BaseClient:
             else:
                 return
 
-    def _paginate(
+    async def _paginate(
         self,
         path: str,
         params: dict,
@@ -248,7 +247,7 @@ class BaseClient:
         options: Optional[RequestOptionBuilder] = None,
     ):
         if raw:
-            return self._get(
+            return await self._get(
                 path=path,
                 params=params,
                 deserializer=deserializer,
