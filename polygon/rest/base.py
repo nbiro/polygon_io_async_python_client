@@ -12,6 +12,8 @@ from ..logging import get_logger
 import logging
 from urllib.parse import urlencode
 from ..exceptions import AuthError, BadResponse
+import aiohttp
+
 
 logger = get_logger("RESTClient")
 version = "unknown"
@@ -51,32 +53,33 @@ class BaseClient:
         # initialize self.retries with the parameter value before using it
         self.retries = retries
 
-        # https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html#urllib3.util.Retry.RETRY_AFTER_STATUS_CODES
-        retry_strategy = Retry(
-            total=self.retries,
-            status_forcelist=[
-                413,
-                429,
-                499,
-                500,
-                502,
-                503,
-                504,
-            ],  # default 413, 429, 503
-            backoff_factor=0.1,  # [0.0s, 0.2s, 0.4s, 0.8s, 1.6s, ...]
-        )
+        # Who needs this am i right?
+        # # https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html#urllib3.util.Retry.RETRY_AFTER_STATUS_CODES
+        # retry_strategy = Retry(
+        #     total=self.retries,
+        #     status_forcelist=[
+        #         413,
+        #         429,
+        #         499,
+        #         500,
+        #         502,
+        #         503,
+        #         504,
+        #     ],  # default 413, 429, 503
+        #     backoff_factor=0.1,  # [0.0s, 0.2s, 0.4s, 0.8s, 1.6s, ...]
+        # )
 
-        # https://urllib3.readthedocs.io/en/stable/reference/urllib3.poolmanager.html
-        # https://urllib3.readthedocs.io/en/stable/reference/urllib3.connectionpool.html#urllib3.HTTPConnectionPool
-        self.client = urllib3.PoolManager(
-            num_pools=num_pools,
-            headers=self.headers,  # default headers sent with each request.
-            ca_certs=certifi.where(),
-            cert_reqs="CERT_REQUIRED",
-            retries=retry_strategy,  # use the customized Retry instance
-        )
+        # # https://urllib3.readthedocs.io/en/stable/reference/urllib3.poolmanager.html
+        # # https://urllib3.readthedocs.io/en/stable/reference/urllib3.connectionpool.html#urllib3.HTTPConnectionPool
+        # self.client = urllib3.PoolManager(
+        #     num_pools=num_pools,
+        #     headers=self.headers,  # default headers sent with each request.
+        #     ca_certs=certifi.where(),
+        #     cert_reqs="CERT_REQUIRED",
+        #     retries=retry_strategy,  # use the customized Retry instance
+        # )
 
-        self.timeout = urllib3.Timeout(connect=connect_timeout, read=read_timeout)
+        # self.timeout = urllib3.Timeout(connect=connect_timeout, read=read_timeout)
 
         if verbose:
             logger.setLevel(logging.DEBUG)
@@ -87,9 +90,9 @@ class BaseClient:
             self.json = json
 
     def _decode(self, resp):
-        return self.json.loads(resp.data.decode("utf-8"))
+        return self.json.loads(resp)
 
-    def _get(
+    async def _get(
         self,
         path: str,
         params: Optional[dict] = None,
@@ -114,19 +117,21 @@ class BaseClient:
             print(f"Request URL: {full_url}")
             print(f"Request Headers: {print_headers}")
 
-        resp = self.client.request(
-            "GET",
-            self.BASE + path,
-            fields=params,
-            headers=headers,
-        )
+        async with aiohttp.ClientSession() as session:
+            async with session.get(self.BASE + path,
+            params=params,
+            headers=headers
+            ) as response:
+                resp = await response.text(encoding="utf-8")
+                response_status = response.status
+                response_headers = response.headers
+                print(response_status)
 
         if self.trace:
-            resp_headers_dict = dict(resp.headers.items())
-            print(f"Response Headers: {resp_headers_dict}")
+            print(f"Response Headers: {response_headers}")
 
-        if resp.status != 200:
-            raise BadResponse(resp.data.decode("utf-8"))
+        if response_status != 200:
+            raise BadResponse(resp)
 
         if raw:
             return resp
